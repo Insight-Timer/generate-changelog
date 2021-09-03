@@ -12,17 +12,21 @@ import subprocess
 import re
 from jira import JIRA, JIRAError
 from datetime import datetime
+from dotenv import load_dotenv
+import os
 
 # ~^~^~^~ user config ~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~^~
 
 # point to your jira installation
-jira_server = 'https://jira.yourdomain.com'
+jira_server = 'https://insight-timer.atlassian.net'
+
+load_dotenv()
 
 """
 configure authentication, see jira module docs for more auth modes
 https://jira.readthedocs.io/en/latest/examples.html#authentication
 """
-jira = JIRA(server=(jira_server), basic_auth=('changelogbot', 'cryp71cp455w0rd'))
+jira = JIRA(server=(jira_server), basic_auth=(os.environ.get("JIRA_USERNAME"), os.environ.get("JIRA_PASSWORD")))
 
 changelogFilename = "CHANGELOG.md"
 
@@ -35,18 +39,22 @@ ignoredTypes = ['Sub-task']
 # if you building different types (alpha,beta,production) and
 # want to differ in the changelog, specify default here and/or
 # pass it as first argument
-buildType = "Release"
+# buildType = "Release"
+# if len(sys.argv) > 1:
+#     buildType = sys.argv[1]
+
+branch = 'appstore'
 if len(sys.argv) > 1:
-    buildType = sys.argv[1]
+    branch = sys.argv[1]
 
 # generate markdown with hyperlinks
-render_link = False
+render_link = True
 
 # ^-^-^ END user config ^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^-^
 
 
 project_format = r'[A-Z][A-Z\d]+'
-git_cmd = 'git log $(git describe --abbrev=0 --tag)..HEAD --format="%s"'
+git_cmd = 'git log ' + branch + '..HEAD --format="%s"'
 
 projects = []
 issues = []
@@ -72,15 +80,15 @@ def load_properties(filepath, sep='=', comment_char='#'):
     return props
 
 
-def set_fixVersions(issue, version):
-    fixVersions = []
-    for existing_version in issue.fields.fixVersions:
-        fixVersions.append({'name': existing_version.name})
-    fixVersions.append({'name': version.name})
-    try:
-        issue.update(fields={'fixVersions': fixVersions})
-    except JIRAError as e:
-        print(e.status_code, e.text, issue.key)
+# def set_fixVersions(issue, version):
+#     fixVersions = []
+#     for existing_version in issue.fields.fixVersions:
+#         fixVersions.append({'name': existing_version.name})
+#     fixVersions.append({'name': version.name})
+#     try:
+#         issue.update(fields={'fixVersions': fixVersions})
+#     except JIRAError as e:
+#         print(e.status_code, e.text, issue.key)
 
 
 def scan_for_tickets():
@@ -104,32 +112,32 @@ def collect_project(issue_id):
         projects.append(project_id)
 
 
-def create_versions(release_version):
-    for project in projects:
-        version_exists = False
-        try:
-            versions = jira.project_versions(project)
-        except JIRAError as e:
-            print("Could not find project: " + project)
-            continue
+# def create_versions(release_version):
+#     for project in projects:
+#         version_exists = False
+#         try:
+#             versions = jira.project_versions(project)
+#         except JIRAError as e:
+#             print("Could not find project: " + project)
+#             continue
 
-        for version in versions:
-            if version.name == release_version.name:
-                version_exists = True
-                break
+#         for version in versions:
+#             if version.name == release_version.name:
+#                 version_exists = True
+#                 break
 
-        sys.stdout.write('version ' + release_version.name
-                         + ' in project ' + project)
-        if(version_exists):
-            print(' exists - not creating one')
-        else:
-            print(' not found - creating it!')
-            try:
-                jira.create_version(release_version.name, project).name
-            except JIRAError as e:
-                print('Not able to create version for: ' + project
-                      + '! Please check if script user has admin rights')
-                pass
+#         sys.stdout.write('version ' + release_version.name
+#                          + ' in project ' + project)
+#         if(version_exists):
+#             print(' exists - not creating one')
+#         else:
+#             print(' not found - creating it!')
+#             try:
+#                 jira.create_version(release_version.name, project).name
+#             except JIRAError as e:
+#                 print('Not able to create version for: ' + project
+#                       + '! Please check if script user has admin rights')
+#                 pass
 
 
 def render(issue):
@@ -142,20 +150,21 @@ def render(issue):
     return issue_line
 
 
-props = load_properties('gradle.properties')
-release = type('', (), {})()
-release.name = (props['versionMajor'] + '.'
-                + props['versionMinor']
-                + '.' + props['versionPatch'])
+# props = load_properties('gradle.properties')
+# release = type('', (), {})()
+# release.name = (props['versionMajor'] + '.'
+#                 + props['versionMinor']
+#                 + '.' + props['versionPatch'])
 
 issues = scan_for_tickets()
-create_versions(release)
+# issue = 0
+# create_versions(release)
 for issueCode in issues:
     try:
         issue = jira.issue(issueCode)
     except JIRAError as e:
-        print(issueCode + "not found")
-    set_fixVersions(issue, release)
+        print(issueCode + " not found")
+    # set_fixVersions(issue, release)
     if issue.fields.issuetype.name in bugTypes:
         bugs.append(issue)
     elif issue.fields.issuetype.name in ignoredTypes:
@@ -166,9 +175,9 @@ for issueCode in issues:
     else:
         added.append(issue)
 
-changelogHeading = "## [" + release.name + "] " + buildType + " " \
-                    + props['buildNumber'] + " - " \
-                    + datetime.today().strftime("%Y-%m-%d") + "\n"
+# changelogHeading = "## [" + release.name + "] " + buildType + " " \
+#                     + props['buildNumber'] + " - " \
+#                     + datetime.today().strftime("%Y-%m-%d") + "\n"
 changelog = ""
 if added:
     changelog += "### Added\n"
@@ -184,19 +193,19 @@ print(changelog)
 
 # writing additional file with just the changes for custom usage
 # e.g slack notifications, tweak for your needs
-notificationHeading = ":android: " + release.name + " " + buildType \
-    + " (" + props['buildNumber'] + ") released\n"
+# notificationHeading = ":android: " + release.name + " " + buildType \
+#     + " (" + props['buildNumber'] + ") released\n"
 f = open("CHANGES.md", "w+")
-f.write(notificationHeading)
+# f.write(notificationHeading)
 f.write(changelog)
 f.close()
 
 changelog += "\n"
-f = open(changelogFilename, "r")
+f = open(changelogFilename, "r+")
 contents = f.readlines()
 f.close()
 contents.insert(8, changelog)
-contents.insert(8, changelogHeading)
+# contents.insert(8, changelogHeading)
 f = open(changelogFilename, "w+")
 f.writelines(contents)
 f.close()
